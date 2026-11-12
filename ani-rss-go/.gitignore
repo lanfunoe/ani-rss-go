@@ -1,0 +1,7 @@
+/ani-rss-go
+*.log
+/dist/
+/internal/web/dist/*
+!/internal/web/dist/.gitkeep
+/config/
+/.env

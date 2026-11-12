@@ -1,0 +1,9 @@
+# Java 版参考源码，不纳入版本控制
+/ani-rss/
+
+target
+.idea
+.vscode/
+.DS_Store
+.env
+AGENTS.MD
