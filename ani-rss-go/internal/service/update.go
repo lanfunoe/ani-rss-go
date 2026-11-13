@@ -17,7 +17,7 @@ var aboutMu sync.Mutex
 // 发布 Go 版本的 GitHub 仓库
 const (
 	githubOwner = "lanfunoe"
-	githubRepo  = "ani-rss"
+	githubRepo  = "ani-rss-go"
 )
 
 // GetAbout 检测 GitHub 最新发布版本，结果缓存一分钟
