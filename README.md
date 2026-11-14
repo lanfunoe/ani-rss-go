@@ -29,6 +29,36 @@
 - **联动**：Bangumi 授权与收藏同步，Emby WebHook 播放后自动点格子
 - **其他**：ICS 追番日历、在线播放、配置备份与恢复、IP 白名单
 
+## Docker 部署
+
+目前仅提供 `linux/amd64`：
+
+```bash
+docker pull ghcr.io/lanfunoe/ani-rss-go:latest
+```
+
+`latest` 为最新版本，也可指定版本号，如 `ghcr.io/lanfunoe/ani-rss-go:0.0.1`。
+
+```bash
+docker run -d --name ani-rss-go \
+  --restart unless-stopped \
+  -p 7789:7789 \
+  -v /path/to/config:/config \
+  -e PUID=0 -e PGID=0 -e UMASK=022 \
+  -e TZ=Asia/Shanghai \
+  ghcr.io/lanfunoe/ani-rss-go:latest
+```
+
+启动后访问 `http://<IP>:7789`。
+
+| 环境变量          | 默认值             | 说明                          |
+|---------------|-----------------|-----------------------------|
+| `PORT`        | `7789`          | 监听端口，修改后需同步调整 `-p` 映射       |
+| `CONFIG`      | `/config`       | 配置目录                        |
+| `TZ`          | `Asia/Shanghai` | 时区                          |
+| `PUID`/`PGID` | `0`             | 运行用户与用户组 ID，挂载目录需对其可写       |
+| `UMASK`       | `022`           | 新建文件的权限掩码                   |
+
 ## 与 Java 版（3.2.59）资源占用对比
 
 ### 磁盘占用
