@@ -1,0 +1,11 @@
+**
+!ani-rss-go/**
+!ani-rss-ui/**
+ani-rss-go/dist
+ani-rss-go/ani-rss-go
+ani-rss-go/internal/web/dist
+ani-rss-ui/dist
+ani-rss-ui/node
+ani-rss-ui/node_modules
+ani-rss-ui/target
+**/*.log
