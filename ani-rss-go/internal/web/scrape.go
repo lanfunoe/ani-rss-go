@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"slices"
 
 	"github.com/gin-gonic/gin"
@@ -23,7 +24,14 @@ func handleScrape(c *gin.Context) {
 	if !okBind {
 		return
 	}
-	go service.Scrape(in, force)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("刮削异常", "title", in.Title, "error", r, "stack", string(debug.Stack()))
+			}
+		}()
+		service.Scrape(in, force)
+	}()
 	okMsg(c, nil, fmt.Sprintf("已开始刮削 %s", in.Title))
 }
 
@@ -48,6 +56,11 @@ func handleBatchScrape(c *gin.Context) {
 		}
 	}
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("批量刮削异常", "error", r, "stack", string(debug.Stack()))
+			}
+		}()
 		slog.Info("开始批量刮削...")
 		for _, ani := range anis {
 			service.Scrape(ani, force)

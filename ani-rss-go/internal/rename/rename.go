@@ -48,7 +48,7 @@ func Rename(ani *entity.Ani, item *entity.Item) bool {
 	var e string
 	if customEpisode && customEpisodeStr != "" {
 		if re, err := regexp.Compile(customEpisodeStr); err == nil {
-			if groups := re.FindStringSubmatch(itemTitle); len(groups) > customEpisodeGroupIndex {
+			if groups := re.FindStringSubmatch(itemTitle); customEpisodeGroupIndex >= 0 && customEpisodeGroupIndex < len(groups) {
 				e = groups[customEpisodeGroupIndex]
 			}
 		}

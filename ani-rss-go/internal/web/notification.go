@@ -2,6 +2,8 @@ package web
 
 import (
 	"errors"
+	"log/slog"
+	"runtime/debug"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +22,15 @@ func handleNotificationTest(c *gin.Context) {
 	}
 	done := make(chan bool, 1)
 	go func() {
-		done <- service.NotificationTest(in)
+		success := false
+		// 发生 panic 时也返回结果，避免等待超时
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("测试通知异常", "type", in.NotificationType, "error", r, "stack", string(debug.Stack()))
+			}
+			done <- success
+		}()
+		success = service.NotificationTest(in)
 	}()
 	select {
 	case r := <-done:

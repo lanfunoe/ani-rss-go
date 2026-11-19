@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -94,10 +95,10 @@ func send(cfg *entity.Config, ani *entity.Ani, text string, status entity.Notifi
 }
 
 // sendOne 调用渠道发送，渠道内的 panic 视为发送失败
-func sendOne(fn sender, n *entity.NotificationConfig, ani *entity.Ani, text string, status entity.NotificationStatus) (ok bool) {
+func sendOne(fn sender, n *entity.NotificationConfig, ani *entity.Ani, text string, status entity.NotificationStatus) bool {
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("通知渠道异常", "type", n.NotificationType, "error", r)
+			slog.Error("通知渠道异常", "type", n.NotificationType, "error", r, "stack", string(debug.Stack()))
 		}
 	}()
 	return fn(n, ani, text, status)

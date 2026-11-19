@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -71,7 +72,7 @@ func Download(ctx context.Context, aniList []*entity.Ani) {
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
-					slog.Error("下载任务异常", "title", ani.Title, "error", r)
+					slog.Error("下载任务异常", "title", ani.Title, "error", r, "stack", string(debug.Stack()))
 				}
 			}()
 			service.DownloadAni(ani)
@@ -162,7 +163,7 @@ func renameTask(ctx context.Context) {
 			func() {
 				defer func() {
 					if r := recover(); r != nil {
-						slog.Error("重命名任务异常", "error", r)
+						slog.Error("重命名任务异常", "name", info.Name, "error", r, "stack", string(debug.Stack()))
 					}
 				}()
 				download.RenameTorrent(info)
@@ -181,7 +182,14 @@ func renameTask(ctx context.Context) {
 // bgmTask 刷新 BGM Token，更新评分与总集数
 func bgmTask(ctx context.Context) {
 	for ctx.Err() == nil {
-		service.RefreshToken()
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("刷新 BGM Token 异常", "error", r, "stack", string(debug.Stack()))
+				}
+			}()
+			service.RefreshToken()
+		}()
 		for _, ani := range store.ANIList() {
 			if ctx.Err() != nil {
 				return
@@ -189,23 +197,30 @@ func bgmTask(ctx context.Context) {
 			if !ani.GetEnable() {
 				continue
 			}
-			info, err := service.GetBgmInfo(ani, false)
-			if err != nil {
-				continue
-			}
-			score := 0.0
-			if info.Rating != nil {
-				score = info.Rating.Score
-			}
-			if tx := store.BeginAni(ani.ID); tx != nil {
-				tx.Score = score
-				tx.Commit()
-			}
-			cfg := config.Get()
-			if !utils.Deref(cfg.UpdateTotalEpisodeNumber) {
-				continue
-			}
-			service.UpdateTotalEpisodeNumber(ani, info, utils.Deref(cfg.ForceUpdateTotalEpisodeNumber))
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("BGM 任务异常", "title", ani.Title, "error", r, "stack", string(debug.Stack()))
+					}
+				}()
+				info, err := service.GetBgmInfo(ani, false)
+				if err != nil {
+					return
+				}
+				score := 0.0
+				if info.Rating != nil {
+					score = info.Rating.Score
+				}
+				if tx := store.BeginAni(ani.ID); tx != nil {
+					tx.Score = score
+					tx.Commit()
+				}
+				cfg := config.Get()
+				if !utils.Deref(cfg.UpdateTotalEpisodeNumber) {
+					return
+				}
+				service.UpdateTotalEpisodeNumber(ani, info, utils.Deref(cfg.ForceUpdateTotalEpisodeNumber))
+			}()
 		}
 		store.SyncAniList()
 		sleep(ctx, 12*time.Hour)

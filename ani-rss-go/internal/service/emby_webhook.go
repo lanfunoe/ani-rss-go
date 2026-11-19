@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strconv"
 	"strings"
@@ -94,6 +95,11 @@ ServerVersion: %s
 	}
 
 	job := func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("Emby WebHook 点格子异常", "fileName", fileName, "error", r, "stack", string(debug.Stack()))
+			}
+		}()
 		slog.Info(fmt.Sprintf("%s 标记为 [%s]", fileName, []string{"未看过", "想看", "看过"}[collectionType]))
 		// 优先匹配路径相同的
 		subjectId := ""

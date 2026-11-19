@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -147,12 +148,22 @@ func AddAni(ani *entity.Ani, override bool) error {
 
 	if ani.GetEnable() {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("下载任务异常", "title", ani.Title, "error", r, "stack", string(debug.Stack()))
+				}
+			}()
 			if download.Login() {
 				DownloadAni(ani)
 			}
 		}()
 	} else {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("统计当前集数异常", "title", ani.Title, "error", r, "stack", string(debug.Stack()))
+				}
+			}()
 			list, err := items.GetItems(ani)
 			if err != nil {
 				slog.Error("获取 RSS 失败", "title", ani.Title, "error", err)
@@ -195,6 +206,11 @@ func SetAni(ani *entity.Ani, move bool) error {
 
 	if move {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("移动订阅文件异常", "title", updated.Title, "error", r, "stack", string(debug.Stack()))
+				}
+			}()
 			oldPath := download.GetDownloadPath(&old)
 			newPath := download.GetDownloadPath(updated)
 			if oldPath == newPath {
@@ -245,6 +261,11 @@ func DeleteAni(ids []string, deleteFiles bool) error {
 	store.SyncAniList()
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("删除订阅异常", "error", r, "stack", string(debug.Stack()))
+			}
+		}()
 		for _, ani := range anis {
 			torrentDir := store.TorrentDir(ani)
 			os.RemoveAll(torrentDir)

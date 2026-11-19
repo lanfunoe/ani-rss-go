@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"runtime/debug"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -158,7 +160,14 @@ func handleUpdateTotalEpisodeNumber(c *gin.Context) {
 		fail(c, errors.New("未选择订阅"))
 		return
 	}
-	go service.UpdateTotalEpisodeNumbers(*ids, force)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("更新总集数异常", "error", r, "stack", string(debug.Stack()))
+			}
+		}()
+		service.UpdateTotalEpisodeNumbers(*ids, force)
+	}()
 	okMsg(c, nil, "已开始更新总集数")
 }
 

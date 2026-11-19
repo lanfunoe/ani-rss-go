@@ -47,7 +47,7 @@ func main() {
 	service.Backup()
 
 	task.Start()
-	slog.Info("version", "v", buildinfo.Version)
+	slog.Info("version: " + buildinfo.Version)
 
 	server := web.NewServer(*port, *webDir)
 	slog.Info("http://127.0.0.1:" + *port)
