@@ -288,7 +288,7 @@ func Load() error {
 
 	mu.Lock()
 	defer mu.Unlock()
-	next := *current.Load()
+	next := *Default()
 	// 仅覆盖磁盘上明确存在的字段
 	if err := Merge(&next, raw); err != nil {
 		return err
