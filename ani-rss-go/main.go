@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 
 	"github.com/joho/godotenv"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -40,7 +39,6 @@ func main() {
 		slog.Error("加载配置失败", "error", err)
 		os.Exit(1)
 	}
-	initVersion()
 	if err := store.LoadAniList(); err != nil {
 		slog.Error("加载订阅失败", "error", err)
 		os.Exit(1)
@@ -80,26 +78,4 @@ func setupLog() {
 	slog.SetDefault(slog.New(logsink.New(slog.NewTextHandler(writer, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))))
-}
-
-// initVersion 填充版本与构建信息，优先使用 -ldflags 注入值
-func initVersion() {
-	cfg := config.Get()
-	cfg.Version = buildinfo.Version
-	commit := buildinfo.Commit
-	if commit == "" {
-		commit = "unknown"
-		if info, ok := debug.ReadBuildInfo(); ok {
-			for _, s := range info.Settings {
-				if s.Key == "vcs.revision" {
-					commit = s.Value
-				}
-			}
-		}
-	}
-	cfg.GitInfo = map[string]string{
-		"branch":        cmp.Or(buildinfo.Branch, "dev"),
-		"commitId":      commit,
-		"shortCommitId": commit[:min(len(commit), 7)],
-	}
 }

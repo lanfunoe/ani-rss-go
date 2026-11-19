@@ -14,10 +14,14 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"uuid"
 
+	"ani-rss-go/internal/buildinfo"
 	"ani-rss-go/internal/entity"
 	"ani-rss-go/internal/httpc"
 	"ani-rss-go/internal/utils"
@@ -27,15 +31,52 @@ import (
 const FileName = "config.v2.json"
 
 var (
-	mu     sync.RWMutex
-	global = Default()
+	mu      sync.Mutex
+	current atomic.Pointer[entity.Config]
 )
+
+func init() {
+	current.Store(Default())
+}
 
 // Get 获取全局配置（单例）
 func Get() *entity.Config {
-	mu.RLock()
-	defer mu.RUnlock()
-	return global
+	return current.Load()
+}
+
+// Tx 配置修改事务，持有写锁直到 Commit 或 Rollback
+type Tx struct {
+	*entity.Config
+	done bool
+}
+
+// Begin 加写锁并返回基于当前配置副本的事务
+func Begin() *Tx {
+	mu.Lock()
+	next := *current.Load()
+	return &Tx{Config: &next}
+}
+
+// Commit 格式化、发布并写盘，然后释放写锁
+func (tx *Tx) Commit() {
+	if tx.done {
+		return
+	}
+	tx.done = true
+	defer mu.Unlock()
+	format(tx.Config)
+	current.Store(tx.Config)
+	save(tx.Config)
+	syncHTTPProxy(tx.Config)
+}
+
+// Rollback 放弃修改并释放写锁，Commit 之后调用无效果
+func (tx *Tx) Rollback() {
+	if tx.done {
+		return
+	}
+	tx.done = true
+	mu.Unlock()
 }
 
 // Default 默认配置
@@ -246,28 +287,45 @@ func Load() error {
 	}
 
 	mu.Lock()
-	err = Merge(global, raw) // 仅覆盖磁盘上明确存在的字段
-	mu.Unlock()
-	if err != nil {
+	defer mu.Unlock()
+	next := *current.Load()
+	// 仅覆盖磁盘上明确存在的字段
+	if err := Merge(&next, raw); err != nil {
 		return err
 	}
+	// 填充版本与构建信息，优先使用 -ldflags 注入值
+	next.Version = buildinfo.Version
+	commit := buildinfo.Commit
+	if commit == "" {
+		commit = "unknown"
+		if info, ok := debug.ReadBuildInfo(); ok {
+			for _, s := range info.Settings {
+				if s.Key == "vcs.revision" {
+					commit = s.Value
+				}
+			}
+		}
+	}
+	next.GitInfo = map[string]string{
+		"branch":        cmp.Or(buildinfo.Branch, "dev"),
+		"commitId":      commit,
+		"shortCommitId": commit[:min(len(commit), 7)],
+	}
+	format(&next)
+	current.Store(&next)
 	// 配置文件不存在或缺少登录令牌的签名密钥时写回磁盘，避免重启后已登录的令牌失效
 	_, hasJwtKey := raw["jwtKey"]
 	_, hasTokenId := raw["tokenId"]
 	if !hasJwtKey || !hasTokenId {
-		Sync()
+		save(&next)
 	}
-	Format(Get())
-	syncHTTPProxy()
+	syncHTTPProxy(&next)
 	return nil
 }
 
-// Sync 保存配置到磁盘（临时文件 + 原子替换）
-func Sync() {
-	mu.Lock()
-	Format(global)
-	data, err := json.MarshalIndent(global, "", "  ")
-	mu.Unlock()
+// save 保存配置到磁盘（临时文件 + 原子替换）
+func save(c *entity.Config) {
+	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		slog.Error("序列化配置失败", "error", err)
 		return
@@ -278,12 +336,10 @@ func Sync() {
 		return
 	}
 	slog.Debug("保存配置成功", "file", file)
-	syncHTTPProxy()
 }
 
 // syncHTTPProxy 将配置同步到 HTTP 客户端
-func syncHTTPProxy() {
-	c := Get()
+func syncHTTPProxy(c *entity.Config) {
 	httpc.SetProxyConfig(httpc.ProxyConfig{
 		Enable:    c.GetProxy(),
 		Host:      c.ProxyHost,
@@ -294,8 +350,8 @@ func syncHTTPProxy() {
 	})
 }
 
-// Format 格式化 URL 与路径
-func Format(c *entity.Config) {
+// format 格式化 URL 与路径
+func format(c *entity.Config) {
 	c.DownloadToolHost = normalizeURL(c.DownloadToolHost)
 	c.MikanHost = normalizeURL(c.MikanHost)
 	c.TmdbApi = normalizeURL(c.TmdbApi)
@@ -307,6 +363,8 @@ func Format(c *entity.Config) {
 	c.NotificationTemplate = strings.TrimSpace(c.NotificationTemplate)
 	c.CustomEpisodeStr = cmp.Or(c.CustomEpisodeStr, entity.EpisodeRegStr)
 	c.CustomEpisodeGroupIndex = cmp.Or(c.CustomEpisodeGroupIndex, new(2))
+	// 列表与旧快照共用底层数组，复制后再修改
+	c.NotificationConfigList = slices.Clone(c.NotificationConfigList)
 	// 补全通知配置默认值（仅补空，不覆盖）
 	for i := range c.NotificationConfigList {
 		completeNotification(&c.NotificationConfigList[i])

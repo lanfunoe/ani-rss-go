@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"ani-rss-go/internal/config"
@@ -32,7 +33,7 @@ type rpcResponse struct {
 
 // Transmission RPC 实现
 type Transmission struct {
-	session string
+	session atomic.Pointer[string]
 }
 
 // rpc 发送 JSON-RPC 2.0 请求，result 非 nil 时接收响应的 result 字段
@@ -79,8 +80,8 @@ func (t *Transmission) post(cfg *entity.Config, data []byte) (*httpc.Response, e
 	req := httpc.Post(strings.TrimRight(cfg.DownloadToolHost, "/")+"/transmission/rpc").
 		Set("Content-Type", "application/json").
 		SetBody(data)
-	if t.session != "" {
-		req.Set("X-Transmission-Session-Id", t.session)
+	if sid := t.session.Load(); sid != nil {
+		req.Set("X-Transmission-Session-Id", *sid)
 	}
 	if cfg.DownloadToolUsername != "" {
 		req.Set("Authorization", basicAuth(cfg.DownloadToolUsername, cfg.DownloadToolPassword))
@@ -90,7 +91,7 @@ func (t *Transmission) post(cfg *entity.Config, data []byte) (*httpc.Response, e
 		return nil, err
 	}
 	if sid := resp.Header.Get("X-Transmission-Session-Id"); sid != "" {
-		t.session = sid
+		t.session.Store(&sid)
 	}
 	return resp, nil
 }

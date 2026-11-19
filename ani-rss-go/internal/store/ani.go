@@ -22,6 +22,7 @@ import (
 var (
 	aniMu   sync.RWMutex
 	aniList []*entity.Ani
+	saveMu  sync.Mutex
 )
 
 // AniFileName 订阅文件名
@@ -48,7 +49,34 @@ func FindAni(id string) *entity.Ani {
 func AddAni(ani *entity.Ani) {
 	aniMu.Lock()
 	defer aniMu.Unlock()
-	aniList = append(aniList, ani)
+	aniList = append(slices.Clip(aniList), ani)
+}
+
+// AniTx 订阅修改事务，持有订阅写锁直到 Commit
+// 只能整体替换字段，不能修改切片元素或指针指向的值，Commit 前不能有网络、磁盘操作
+type AniTx struct {
+	*entity.Ani
+	index int
+}
+
+// BeginAni 加写锁并返回基于订阅副本的事务，订阅不存在时返回 nil
+func BeginAni(id string) *AniTx {
+	aniMu.Lock()
+	i := slices.IndexFunc(aniList, func(ani *entity.Ani) bool { return ani.ID == id })
+	if i < 0 {
+		aniMu.Unlock()
+		return nil
+	}
+	updated := *aniList[i]
+	return &AniTx{Ani: &updated, index: i}
+}
+
+// Commit 在新切片中替换订阅并释放写锁，避免影响 ANIList 返回给读者的底层数组
+func (tx *AniTx) Commit() {
+	defer aniMu.Unlock()
+	list := slices.Clone(aniList)
+	list[tx.index] = tx.Ani
+	aniList = list
 }
 
 // RemoveAni 删除订阅
@@ -63,13 +91,6 @@ func RemoveAni(anis ...*entity.Ani) {
 		}
 	}
 	aniList = out
-}
-
-// ContainsAni 是否已存在该订阅
-func ContainsAni(ani *entity.Ani) bool {
-	aniMu.RLock()
-	defer aniMu.RUnlock()
-	return slices.ContainsFunc(aniList, func(a *entity.Ani) bool { return a.ID == ani.ID })
 }
 
 // AniFile 订阅文件路径
@@ -139,9 +160,9 @@ func LoadAniList() error {
 
 // SyncAniList 保存订阅
 func SyncAniList() {
-	aniMu.RLock()
-	data, err := json.MarshalIndent(aniList, "", "  ")
-	aniMu.RUnlock()
+	saveMu.Lock()
+	defer saveMu.Unlock()
+	data, err := json.MarshalIndent(ANIList(), "", "  ")
 	if err != nil {
 		slog.Error("序列化订阅失败", "error", err)
 		return

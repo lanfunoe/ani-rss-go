@@ -59,7 +59,8 @@ func Download(ctx context.Context, aniList []*entity.Ani) {
 		if ctx.Err() != nil {
 			return
 		}
-		if !store.ContainsAni(ani) {
+		ani := store.FindAni(ani.ID)
+		if ani == nil {
 			// 订阅可能已经被删除
 			continue
 		}
@@ -192,9 +193,13 @@ func bgmTask(ctx context.Context) {
 			if err != nil {
 				continue
 			}
-			ani.Score = 0
+			score := 0.0
 			if info.Rating != nil {
-				ani.Score = info.Rating.Score
+				score = info.Rating.Score
+			}
+			if tx := store.BeginAni(ani.ID); tx != nil {
+				tx.Score = score
+				tx.Commit()
 			}
 			cfg := config.Get()
 			if !utils.Deref(cfg.UpdateTotalEpisodeNumber) {

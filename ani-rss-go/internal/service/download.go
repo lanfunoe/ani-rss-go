@@ -159,7 +159,7 @@ func DownloadAni(ani *entity.Ani) {
 
 		DeleteStandbyRss(ani, item)
 
-		if !store.ContainsAni(ani) {
+		if store.FindAni(ani.ID) == nil {
 			return
 		}
 
@@ -171,8 +171,16 @@ func DownloadAni(ani *entity.Ani) {
 	}
 
 	if synced {
-		ani.CurrentEpisodeNumber = items.CurrentEpisodeNumber(ani, list)
-		ani.LastDownloadTime = time.Now().UnixMilli()
+		currentEpisodeNumber := items.CurrentEpisodeNumber(ani, list)
+		tx := store.BeginAni(ani.ID)
+		if tx == nil {
+			// 订阅已被删除
+			return
+		}
+		tx.CurrentEpisodeNumber = currentEpisodeNumber
+		tx.LastDownloadTime = time.Now().UnixMilli()
+		tx.Commit()
+		ani = tx.Ani
 		store.SyncAniList()
 	}
 
@@ -184,7 +192,10 @@ func DownloadAni(ani *entity.Ani) {
 	if currentDownloadCount >= ani.TotalEpisodeNumber {
 		slog.Info("已全部下载完成, 自动停止订阅", "title", title, "season", season, "total", ani.TotalEpisodeNumber)
 		notification.Send(cfg, ani, fmt.Sprintf("%s 订阅已完结", title), entity.StatusCompleted)
-		ani.Enable = new(false)
+		if tx := store.BeginAni(ani.ID); tx != nil {
+			tx.Enable = new(false)
+			tx.Commit()
+		}
 		store.SyncAniList()
 	}
 }
@@ -408,8 +419,7 @@ func ItemDownloaded(ani *entity.Ani, item *entity.Item, downloadList bool) bool 
 func FindAniByDownloadPath(info *entity.TorrentsInfo) *entity.Ani {
 	for _, ani := range store.ANIList() {
 		if download.GetDownloadPath(ani) == info.SavePath {
-			clone := *ani
-			return &clone
+			return ani
 		}
 	}
 	return nil

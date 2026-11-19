@@ -40,11 +40,11 @@ func VerifyNo(no string) (*entity.Result, error) {
 		return nil, err
 	}
 	if out.Code == entity.CodeOK {
-		cfg := config.Get()
-		cfg.OutTradeNo = no
-		cfg.ExpirationTime = new(time.Now().AddDate(999, 0, 0).UnixMilli())
-		cfg.TryOut = new(false)
-		config.Sync()
+		tx := config.Begin()
+		tx.OutTradeNo = no
+		tx.ExpirationTime = new(time.Now().AddDate(999, 0, 0).UnixMilli())
+		tx.TryOut = new(false)
+		tx.Commit()
 	}
 	return &entity.Result{Code: out.Code, Message: out.Message, T: time.Now().UnixMilli()}, nil
 }

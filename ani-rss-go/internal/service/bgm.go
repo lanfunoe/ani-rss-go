@@ -122,10 +122,20 @@ func GetSubjectId(ani *entity.Ani) string {
 	if ani == nil {
 		return ""
 	}
-	if ani.BgmUrl == "" && ani.Type == "mikan" && items.RssParam(ani.URL, "bangumiId") != "" {
-		_ = MikanFillAni(ani, "")
+	if ani.BgmUrl != "" || ani.Type != "mikan" || items.RssParam(ani.URL, "bangumiId") == "" {
+		return entity.SubjectIdFromUrl(ani.BgmUrl)
 	}
-	return entity.SubjectIdFromUrl(ani.BgmUrl)
+	filled := *ani
+	if err := MikanFillAni(&filled, ""); err != nil || filled.BgmUrl == "" {
+		return ""
+	}
+	if tx := store.BeginAni(ani.ID); tx != nil {
+		if tx.BgmUrl == "" && tx.URL == ani.URL {
+			tx.MikanTitle, tx.BgmUrl = filled.MikanTitle, filled.BgmUrl
+		}
+		tx.Commit()
+	}
+	return entity.SubjectIdFromUrl(filled.BgmUrl)
 }
 
 // GetEps 获取总集数，优先使用正片集列表数量排除 OVA
@@ -706,10 +716,10 @@ func bgmOAuthToken(params map[string]string) error {
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return err
 	}
-	cfg := config.Get()
-	cfg.BgmToken = out.AccessToken
-	cfg.BgmRefreshToken = out.RefreshToken
-	config.Sync()
+	tx := config.Begin()
+	tx.BgmToken = out.AccessToken
+	tx.BgmRefreshToken = out.RefreshToken
+	tx.Commit()
 	return nil
 }
 

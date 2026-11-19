@@ -9,6 +9,7 @@ import (
 	"ani-rss-go/internal/entity"
 	"ani-rss-go/internal/items"
 	"ani-rss-go/internal/rename"
+	"ani-rss-go/internal/store"
 )
 
 func init() {
@@ -58,6 +59,11 @@ func jpTitleOf(ani *entity.Ani) string {
 	if err != nil {
 		return ""
 	}
-	ani.JpTitle = bgmInfo.Name
-	return ani.JpTitle
+	if tx := store.BeginAni(ani.ID); tx != nil {
+		if tx.JpTitle == "" && tx.BgmUrl == ani.BgmUrl {
+			tx.JpTitle = bgmInfo.Name
+		}
+		tx.Commit()
+	}
+	return bgmInfo.Name
 }

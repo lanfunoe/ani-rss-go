@@ -158,7 +158,11 @@ func AddAni(ani *entity.Ani, override bool) error {
 				slog.Error("获取 RSS 失败", "title", ani.Title, "error", err)
 				return
 			}
-			ani.CurrentEpisodeNumber = items.CurrentEpisodeNumber(ani, list)
+			currentEpisodeNumber := items.CurrentEpisodeNumber(ani, list)
+			if tx := store.BeginAni(ani.ID); tx != nil {
+				tx.CurrentEpisodeNumber = currentEpisodeNumber
+				tx.Commit()
+			}
 		}()
 	}
 	slog.Info("添加订阅", "title", ani.Title, "url", ani.URL, "id", ani.ID)
@@ -172,29 +176,32 @@ func SetAni(ani *entity.Ani, move bool) error {
 	setAniMu.Lock()
 	defer setAniMu.Unlock()
 
-	var old *entity.Ani
 	for _, it := range store.ANIList() {
 		if it.ID != ani.ID && it.Title == ani.Title && it.Season == ani.Season {
 			return errors.New("订阅标题重复")
 		}
-		if it.ID == ani.ID {
-			old = it
-		}
-	}
-	if old == nil {
-		return errors.New("订阅不存在")
 	}
 
+	tx := store.BeginAni(ani.ID)
+	if tx == nil {
+		return errors.New("订阅不存在")
+	}
+	old := *tx.Ani
+	*tx.Ani = *ani
+	// 保留运行时字段
+	tx.CurrentEpisodeNumber, tx.LastDownloadTime = old.CurrentEpisodeNumber, old.LastDownloadTime
+	tx.Commit()
+	updated := tx.Ani
+
 	if move {
-		oldCopy := *old
 		go func() {
-			oldPath := download.GetDownloadPath(&oldCopy)
-			newPath := download.GetDownloadPath(ani)
+			oldPath := download.GetDownloadPath(&old)
+			newPath := download.GetDownloadPath(updated)
 			if oldPath == newPath {
 				// 位置未发生改变
 				return
 			}
-			for _, info := range download.FindTorrentsInfosByAni(&oldCopy) {
+			for _, info := range download.FindTorrentsInfosByAni(&old) {
 				download.SetSavePath(info, newPath)
 			}
 			os.MkdirAll(newPath, 0o755)
@@ -203,17 +210,9 @@ func SetAni(ani *entity.Ani, move bool) error {
 		}()
 	}
 
-	// 保留运行时字段
-	currentEpisode := old.CurrentEpisodeNumber
-	lastDownloadTime := old.LastDownloadTime
-	oldCopy := *old
-	*old = *ani
-	old.CurrentEpisodeNumber = currentEpisode
-	old.LastDownloadTime = lastDownloadTime
-
 	// 种子目录迁移
-	oldDir := store.TorrentDir(&oldCopy)
-	newDir := store.TorrentDir(old)
+	oldDir := store.TorrentDir(&old)
+	newDir := store.TorrentDir(updated)
 	if oldDir != newDir {
 		os.MkdirAll(filepath.Dir(newDir), 0o755)
 		if _, err := os.Stat(oldDir); err == nil {
@@ -294,13 +293,15 @@ func ListAni() *entity.ListAni {
 	out.Total = len(aniList)
 
 	// 先计算拼音，供排序与前端检索使用
+	sorted := make([]*entity.Ani, 0, len(aniList))
 	for _, ani := range aniList {
-		ani.Pinyin = utils.GetPinyin(ani.Title)
-		ani.PinyinInitials = utils.GetFirstLetter(ani.Title)
+		view := *ani
+		view.Pinyin = utils.GetPinyin(view.Title)
+		view.PinyinInitials = utils.GetFirstLetter(view.Title)
+		sorted = append(sorted, &view)
 	}
 
 	// 排序
-	sorted := slices.Clone(aniList)
 	switch cfg.SortType {
 	case entity.SortPinyin:
 		slices.SortStableFunc(sorted, func(a, b *entity.Ani) int { return cmp.Compare(a.Pinyin, b.Pinyin) })
@@ -335,7 +336,12 @@ func UpdateTotalEpisodeNumber(ani *entity.Ani, bgmInfo *entity.BgmInfo, force bo
 	if eps == ani.TotalEpisodeNumber {
 		return false
 	}
-	ani.TotalEpisodeNumber = eps
+	tx := store.BeginAni(ani.ID)
+	if tx == nil {
+		return false
+	}
+	tx.TotalEpisodeNumber = eps
+	tx.Commit()
 	slog.Info("总集数发生更新", "title", ani.Title, "eps", eps)
 	return true
 }
@@ -365,9 +371,10 @@ func BatchEnable(value bool, ids []string) error {
 	if len(ids) == 0 {
 		return errors.New("未选择订阅")
 	}
-	for _, ani := range store.ANIList() {
-		if slices.Contains(ids, ani.ID) {
-			ani.Enable = new(value)
+	for _, id := range ids {
+		if tx := store.BeginAni(id); tx != nil {
+			tx.Enable = new(value)
+			tx.Commit()
 		}
 	}
 	store.SyncAniList()
@@ -434,15 +441,14 @@ func ImportAni(aniList []*entity.Ani, conflict string) error {
 			continue
 		}
 		slog.Info("存在冲突，已替换", "title", ani.Title, "season", ani.Season)
-		currentEpisode := old.CurrentEpisodeNumber
-		lastDownloadTime := old.LastDownloadTime
-		oldID := old.ID
 		cover := store.SaveCover(ani.Image)
-		*old = *ani
-		old.Cover = cover
-		old.ID = oldID
-		old.CurrentEpisodeNumber = currentEpisode
-		old.LastDownloadTime = lastDownloadTime
+		if tx := store.BeginAni(old.ID); tx != nil {
+			id, currentEpisode, lastDownloadTime := tx.ID, tx.CurrentEpisodeNumber, tx.LastDownloadTime
+			*tx.Ani = *ani
+			tx.Cover, tx.ID = cover, id
+			tx.CurrentEpisodeNumber, tx.LastDownloadTime = currentEpisode, lastDownloadTime
+			tx.Commit()
+		}
 	}
 	store.SyncAniList()
 	return nil

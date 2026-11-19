@@ -43,15 +43,16 @@ func GetConfig() map[string]any {
 
 // SetConfig 合并并保存设置，返回是否需要重启循环任务
 func SetConfig(body map[string]json.RawMessage) (bool, error) {
-	cfg := config.Get()
 	// 到期时间、订单号与令牌签名密钥不允许修改
 	delete(body, "expirationTime")
 	delete(body, "outTradeNo")
 	delete(body, "tryOut")
 	delete(body, "jwtKey")
+	tx := config.Begin()
+	defer tx.Rollback()
 	oldUsername := ""
-	if cfg.Login != nil {
-		oldUsername = cfg.Login.Username
+	if tx.Login != nil {
+		oldUsername = tx.Login.Username
 	}
 	// 用户名或密码为空表示未修改
 	passwordChanged := false
@@ -59,12 +60,12 @@ func SetConfig(body map[string]json.RawMessage) (bool, error) {
 		var login entity.Login
 		if json.Unmarshal(v, &login) == nil {
 			passwordChanged = login.Password != ""
-			if cfg.Login != nil {
+			if tx.Login != nil {
 				if login.Username == "" {
-					login.Username = cfg.Login.Username
+					login.Username = tx.Login.Username
 				}
 				if login.Password == "" {
-					login.Password = cfg.Login.Password
+					login.Password = tx.Login.Password
 				}
 			}
 			if data, err := json.Marshal(login); err == nil {
@@ -72,29 +73,28 @@ func SetConfig(body map[string]json.RawMessage) (bool, error) {
 			}
 		}
 	}
-	candidate := *cfg
-	if err := config.Merge(&candidate, body); err != nil {
+	oldAutoStart := tx.GetAutoStart()
+	oldRssSleep, oldRenameSleep := utils.Deref(tx.RssSleepMinutes), utils.Deref(tx.RenameSleepSeconds)
+	if err := config.Merge(tx.Config, body); err != nil {
 		return false, err
 	}
 	// 用户名或密码发生改动时更换 tokenId，使已登录的令牌失效
-	if candidate.Login != nil && (candidate.Login.Username != oldUsername || passwordChanged) {
-		candidate.TokenId = uuid.New().String()
+	if tx.Login != nil && (tx.Login.Username != oldUsername || passwordChanged) {
+		tx.TokenId = uuid.New().String()
 	}
 	// 代理参数校验
-	if candidate.GetProxy() && (strings.TrimSpace(candidate.ProxyHost) == "" || utils.Deref(candidate.ProxyPort) < 1 || utils.Deref(candidate.ProxyPort) > 65535) {
+	if tx.GetProxy() && (strings.TrimSpace(tx.ProxyHost) == "" || utils.Deref(tx.ProxyPort) < 1 || utils.Deref(tx.ProxyPort) > 65535) {
 		return false, errors.New("代理参数不完整")
 	}
 	// 开机自启发生改变，同步失败时不保存设置
-	if candidate.GetAutoStart() != cfg.GetAutoStart() {
-		if err := autostart.Sync(candidate.GetAutoStart()); err != nil {
+	if tx.GetAutoStart() != oldAutoStart {
+		if err := autostart.Sync(tx.GetAutoStart()); err != nil {
 			return false, err
 		}
 	}
 	// 时间间隔发生改变时重启任务
-	restart := utils.Deref(candidate.RssSleepMinutes) != utils.Deref(cfg.RssSleepMinutes) ||
-		utils.Deref(candidate.RenameSleepSeconds) != utils.Deref(cfg.RenameSleepSeconds)
-	*cfg = candidate
-	config.Sync()
+	restart := utils.Deref(tx.RssSleepMinutes) != oldRssSleep || utils.Deref(tx.RenameSleepSeconds) != oldRenameSleep
+	tx.Commit()
 	return restart, nil
 }
 
