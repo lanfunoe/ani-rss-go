@@ -86,6 +86,14 @@ func SetConfig(body map[string]json.RawMessage) (bool, error) {
 	if tx.GetProxy() && (strings.TrimSpace(tx.ProxyHost) == "" || utils.Deref(tx.ProxyPort) < 1 || utils.Deref(tx.ProxyPort) > 65535) {
 		return false, errors.New("代理参数不完整")
 	}
+	if err := checkRules("全局排除规则", tx.Exclude); err != nil {
+		return false, err
+	}
+	if tx.GetCustomEpisodeFlag() && tx.CustomEpisodeStr != "" {
+		if err := checkRegex(tx.CustomEpisodeStr); err != nil {
+			return false, fmt.Errorf("自定义集数正则「%s」无效：%w", tx.CustomEpisodeStr, err)
+		}
+	}
 	// 开机自启发生改变，同步失败时不保存设置
 	if tx.GetAutoStart() != oldAutoStart {
 		if err := autostart.Sync(tx.GetAutoStart()); err != nil {

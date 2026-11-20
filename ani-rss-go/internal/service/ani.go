@@ -4,6 +4,7 @@ package service
 import (
 	"cmp"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -126,6 +127,9 @@ func AddAni(ani *entity.Ani, override bool) error {
 	if strings.TrimSpace(ani.URL) == "" {
 		return errors.New("RSS地址 不能为空")
 	}
+	if err := validateAniRegex(ani); err != nil {
+		return err
+	}
 	if old := store.FindAni(ani.ID); old != nil {
 		if !override {
 			return errors.New("此订阅已存在")
@@ -184,6 +188,9 @@ var setAniMu sync.Mutex
 
 // SetAni 修改订阅
 func SetAni(ani *entity.Ani, move bool) error {
+	if err := validateAniRegex(ani); err != nil {
+		return err
+	}
 	setAniMu.Lock()
 	defer setAniMu.Unlock()
 
@@ -441,6 +448,15 @@ func DownloadPathPreview(ani *entity.Ani) map[string]any {
 func ImportAni(aniList []*entity.Ani, conflict string) error {
 	if len(aniList) == 0 {
 		return errors.New("导入列表为空")
+	}
+	// 先整体校验，避免只导入一部分
+	for _, ani := range aniList {
+		if ani == nil {
+			return errors.New("参数错误")
+		}
+		if err := validateAniRegex(ani); err != nil {
+			return fmt.Errorf("订阅「%s」的%w", ani.Title, err)
+		}
 	}
 	for _, ani := range aniList {
 		var old *entity.Ani
