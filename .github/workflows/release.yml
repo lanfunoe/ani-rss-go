@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: ani-rss-go/go.mod
+          cache-dependency-path: ani-rss-go/go.sum
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 26
+      - name: Install pnpm
+        run: npm install -g pnpm@11.9.0
+      # 产物名 ani-rss-go-<GOOS>-<GOARCH>[v<GOARM>] 与版本检测匹配的发布文件名一致
+      - name: Build
+        env:
+          VERSION: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          BRANCH: ${{ github.event.repository.default_branch }}
+        run: ./ani-rss-go/build.sh
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" ani-rss-go/dist/* \
+            --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
