@@ -21,7 +21,7 @@ import (
 )
 
 // UserAgent 统一 UA
-var UserAgent = fmt.Sprintf("ani-rss/%s (https://github.com/wushuo894/ani-rss)", buildinfo.Version)
+var UserAgent = fmt.Sprintf("ani-rss-go/%s (https://github.com/lanfunoe/ani-rss-go)", buildinfo.Version)
 
 // ProxyConfig 代理配置由外部注入，避免循环依赖
 type ProxyConfig struct {
