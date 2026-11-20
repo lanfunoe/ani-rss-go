@@ -65,6 +65,9 @@ func skip(b []byte, pos int) (int, error) {
 				if err != nil {
 					return 0, err
 				}
+				if n > len(b)-colon-1 {
+					return 0, errors.New("bencode: 字符串长度越界")
+				}
 				i = colon + n
 			}
 		}
@@ -90,11 +93,10 @@ func skip(b []byte, pos int) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		end := colon + 1 + n
-		if end > len(b) {
+		if n > len(b)-colon-1 {
 			return 0, errors.New("bencode: 字符串长度越界")
 		}
-		return end, nil
+		return colon + 1 + n, nil
 	}
 }
 
