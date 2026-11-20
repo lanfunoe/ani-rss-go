@@ -14,7 +14,7 @@
       </div>
     </div>
     <div class="flex button-list">
-      <el-button :icon="Github" bg text type="info" @click="openUrl('https://github.com/wushuo894/ani-rss')">
+      <el-button :icon="Github" bg text type="info" @click="openUrl('https://github.com/lanfunoe/ani-rss-go')">
         GitHub
       </el-button>
       <el-button :icon="Book" bg text type="info" @click="openUrl('https://docs.wushuo.top')">
@@ -84,7 +84,7 @@
     </div>
     <div class="flex about-dialog-footer">
       <el-button bg text icon="Tickets"
-                 @click="openUrl('https://docs.wushuo.top/history')"
+                 @click="openUrl('https://github.com/lanfunoe/ani-rss-go/releases')"
                  type="primary">
         更新历史
       </el-button>
