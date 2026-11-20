@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"html/template"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/smtp"
 	"net/url"
@@ -385,47 +386,79 @@ func mailSend(n *entity.NotificationConfig, ani *entity.Ani, text string, status
 		}
 	}
 	msg := buildMail(n.MailFrom, strings.Join(recipients, ", "), subject, htmlBuf.String())
-	if useSSL {
-		conn, e := tls.Dial("tcp", addr, &tls.Config{ServerName: n.MailSMTPHost})
-		if e != nil {
-			slog.Error("连接 SMTP 失败", "error", e)
-			return false
-		}
-		c, e := smtp.NewClient(conn, n.MailSMTPHost)
-		if e != nil {
-			return false
-		}
-		defer c.Close()
-		if e = c.Auth(smtp.PlainAuth("", n.MailFrom, n.MailPassword, n.MailSMTPHost)); e != nil {
-			slog.Error("SMTP 认证失败", "error", e)
-			return false
-		}
-		if e = c.Mail(n.MailFrom); e != nil {
-			return false
-		}
-		for _, recipient := range recipients {
-			if e = c.Rcpt(recipient); e != nil {
-				return false
-			}
-		}
-		w, e := c.Data()
-		if e != nil {
-			return false
-		}
-		w.Write(msg)
-		w.Close()
-		if e = c.Quit(); e != nil {
-			slog.Error("邮件发送失败", "error", e)
-			return false
-		}
-		return true
-	}
-	auth := smtp.PlainAuth("", n.MailFrom, n.MailPassword, n.MailSMTPHost)
-	if err := smtp.SendMail(addr, auth, n.MailFrom, recipients, msg); err != nil {
+	if err := smtpSend(addr, n.MailSMTPHost, useSSL, n.MailFrom, n.MailPassword, recipients, msg); err != nil {
 		slog.Error("邮件发送失败", "error", err)
 		return false
 	}
 	return true
+}
+
+var (
+	// smtpDialTimeout 建立连接（SSL 时含握手）的超时
+	smtpDialTimeout = 15 * time.Second
+	// smtpSessionTimeout 整个 SMTP 会话的超时，避免服务器无响应时卡住通知队列
+	smtpSessionTimeout = time.Minute
+)
+
+// smtpSend 发送邮件，所有网络操作都受超时限制
+// useSSL 为 true 时直接建立 SSL 连接，否则建立明文连接并在服务器支持时升级 STARTTLS
+func smtpSend(addr, host string, useSSL bool, from, password string, recipients []string, msg []byte) error {
+	dialer := &net.Dialer{Timeout: smtpDialTimeout}
+	var conn net.Conn
+	var err error
+	if useSSL {
+		conn, err = tls.DialWithDialer(dialer, "tcp", addr, &tls.Config{ServerName: host})
+	} else {
+		conn, err = dialer.Dial("tcp", addr)
+	}
+	if err != nil {
+		return fmt.Errorf("连接 SMTP 失败: %w", err)
+	}
+	// 截止时间设在底层连接上，STARTTLS 升级后同样生效
+	if err = conn.SetDeadline(time.Now().Add(smtpSessionTimeout)); err != nil {
+		conn.Close()
+		return err
+	}
+	// NewClient 失败时会自行关闭连接
+	c, err := smtp.NewClient(conn, host)
+	if err != nil {
+		return fmt.Errorf("读取 SMTP 欢迎信息失败: %w", err)
+	}
+	defer c.Close()
+	if !useSSL {
+		if ok, _ := c.Extension("STARTTLS"); ok {
+			if err = c.StartTLS(&tls.Config{ServerName: host}); err != nil {
+				return fmt.Errorf("STARTTLS 失败: %w", err)
+			}
+		}
+	}
+	if err = c.Auth(smtp.PlainAuth("", from, password, host)); err != nil {
+		return fmt.Errorf("SMTP 认证失败: %w", err)
+	}
+	if err = c.Mail(from); err != nil {
+		return err
+	}
+	for _, recipient := range recipients {
+		if err = c.Rcpt(recipient); err != nil {
+			return fmt.Errorf("收件人 %s 被拒绝: %w", recipient, err)
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	if _, err = w.Write(msg); err != nil {
+		return err
+	}
+	// Close 会发送结束标记并读取服务器对这封邮件的最终答复，拒收在这里才会体现
+	if err = w.Close(); err != nil {
+		return err
+	}
+	// 邮件已被服务器接收，QUIT 失败不算发送失败，避免重试导致重复发信
+	if err = c.Quit(); err != nil {
+		slog.Debug("SMTP QUIT 失败", "error", err)
+	}
+	return nil
 }
 
 func buildMail(from, to, subject, body string) []byte {
