@@ -31,13 +31,13 @@
 
 ## Docker 部署
 
-镜像支持 `linux/amd64`、`linux/arm64`、`linux/arm/v7`：
-
 ```bash
 docker pull ghcr.io/lanfunoe/ani-rss-go:latest
+# 或 Docker Hub
+docker pull lanfunoe/ani-rss-go:latest
 ```
 
-`latest` 为最新版本，也可指定版本号，如 `ghcr.io/lanfunoe/ani-rss-go:0.0.1`。
+`latest` 为最新版本，也可指定版本号，如 `lanfunoe/ani-rss-go:0.0.1`。
 
 ```bash
 docker run -d --name ani-rss-go \
