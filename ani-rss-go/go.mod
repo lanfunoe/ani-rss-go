@@ -2,6 +2,8 @@ module ani-rss-go
 
 go 1.27.0
 
+toolchain go1.27.4
+
 require (
 	github.com/PuerkitoBio/goquery v1.13.0
 	github.com/arran4/golang-ical v0.3.8

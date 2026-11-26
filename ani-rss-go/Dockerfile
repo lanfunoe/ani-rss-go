@@ -10,7 +10,7 @@ WORKDIR /src/ani-rss-ui
 COPY ani-rss-ui/ ./
 RUN pnpm install --no-frozen-lockfile && pnpm build
 
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.4-alpine AS build
 ARG GOPROXY
 WORKDIR /src
 COPY ani-rss-go/go.mod ani-rss-go/go.sum ./
