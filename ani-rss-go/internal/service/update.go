@@ -21,7 +21,7 @@ const (
 )
 
 // GetAbout 检测 GitHub 最新发布版本，结果缓存一分钟
-// 下载信息取与当前平台对应的发布产物 ani-rss-go-<GOOS>-<GOARCH>[v<GOARM>]
+// 下载信息取与当前平台对应的发布产物 ani-rss-go-<GOOS>-<GOARCH>[v<GOARM>][.exe]
 func GetAbout(version string) *entity.About {
 	aboutMu.Lock()
 	defer aboutMu.Unlock()
@@ -39,6 +39,9 @@ func GetAbout(version string) *entity.About {
 				filename += "v" + s.Value
 			}
 		}
+	}
+	if runtime.GOOS == "windows" {
+		filename += ".exe"
 	}
 	info, err := githubUpdateInfo(githubOwner, githubRepo, filename, version)
 	if err != nil {

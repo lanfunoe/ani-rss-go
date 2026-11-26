@@ -31,6 +31,8 @@ jobs:
           done
           echo "version=${version:-dev}" >> $GITHUB_ENV
           echo "tags=${tags#,}" >> $GITHUB_ENV
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       - name: Login to ghcr.io
@@ -49,7 +51,7 @@ jobs:
         with:
           context: ./
           file: ./ani-rss-go/Dockerfile
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
           provenance: false
           sbom: false

@@ -11,14 +11,14 @@ COPY ani-rss-ui/ ./
 RUN pnpm install --no-frozen-lockfile && pnpm build
 
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
-ARG TARGETOS TARGETARCH TARGETVARIANT
 ARG GOPROXY
-ARG VERSION=dev COMMIT= BRANCH=
 WORKDIR /src
 COPY ani-rss-go/go.mod ani-rss-go/go.sum ./
 RUN go mod download
 COPY ani-rss-go/ ./
 COPY --from=ui /src/ani-rss-ui/dist/ ./internal/web/dist/
+ARG TARGETOS TARGETARCH TARGETVARIANT
+ARG VERSION=dev COMMIT= BRANCH=
 RUN PKG=ani-rss-go/internal/buildinfo && \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH GOARM=${TARGETVARIANT#v} \
     go build -trimpath \

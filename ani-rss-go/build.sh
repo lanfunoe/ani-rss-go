@@ -36,13 +36,20 @@ LDFLAGS="-s -w -X $PKG.Version=$VERSION -X $PKG.Commit=$COMMIT -X $PKG.Branch=$B
 
 TARGETS=("$@")
 if [ ${#TARGETS[@]} -eq 0 ]; then
-  TARGETS=(linux/amd64 linux/arm64 linux/arm/7)
+  TARGETS=(
+    linux/amd64 linux/arm64 linux/arm/7
+    windows/amd64 windows/arm64
+    darwin/amd64 darwin/arm64
+  )
 fi
 
 mkdir -p "$OUT_DIR"
 for target in "${TARGETS[@]}"; do
   IFS=/ read -r goos goarch goarm <<<"$target"
   name="ani-rss-go-$goos-$goarch${goarm:+v$goarm}"
+  if [ "$goos" = windows ]; then
+    name+=.exe
+  fi
   CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch GOARM=$goarm \
     go build -trimpath -ldflags "$LDFLAGS" -o "$OUT_DIR/$name" .
   echo "已构建 $OUT_DIR/$name ($VERSION)"

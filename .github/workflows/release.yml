@@ -21,7 +21,7 @@ jobs:
           node-version: 26
       - name: Install pnpm
         run: npm install -g pnpm@11.9.0
-      # 产物名 ani-rss-go-<GOOS>-<GOARCH>[v<GOARM>] 与版本检测匹配的发布文件名一致
+      # 产物名 ani-rss-go-<GOOS>-<GOARCH>[v<GOARM>][.exe] 与版本检测匹配的发布文件名一致
       - name: Build
         env:
           VERSION: ${{ github.ref_name }}

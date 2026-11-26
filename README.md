@@ -31,7 +31,7 @@
 
 ## Docker 部署
 
-目前仅提供 `linux/amd64`：
+镜像支持 `linux/amd64`、`linux/arm64`、`linux/arm/v7`：
 
 ```bash
 docker pull ghcr.io/lanfunoe/ani-rss-go:latest
